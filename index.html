@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartCart</title>
+
+  <!-- Biblioteca de leitura de QR Code -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    :root {
+      --fundo: #eef2f1;
+      --tinta: #10231f;
+      --tinta-suave: #5b6b67;
+      --verde: #0b6e4f;
+      --verde-escuro: #08543c;
+      --amarelo: #ffd23f;
+      --vermelho: #c0392b;
+      --papel: #ffffff;
+      --linha: #d7dfdd;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      background: var(--fundo);
+      color: var(--tinta);
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 16px 16px 120px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    header h1 { font-size: 26px; letter-spacing: -0.02em; }
+    header span { font-size: 28px; }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+      border: none;
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-weight: 600;
+      min-height: 48px;
+    }
+    button:focus-visible, input:focus-visible {
+      outline: 3px solid var(--amarelo);
+      outline-offset: 2px;
+    }
+
+    .btn-principal { background: var(--verde); color: #fff; width: 100%; }
+    .btn-principal:hover { background: var(--verde-escuro); }
+    .btn-parar { background: var(--tinta); }
+    .btn-parar:hover { background: #000; }
+    .btn-secundario { background: transparent; color: var(--tinta); border: 2px solid var(--linha); }
+    .btn-secundario:hover { background: #fff; }
+
+    /* ---------- Scanner ---------- */
+    #status {
+      min-height: 24px;
+      text-align: center;
+      color: var(--tinta-suave);
+      margin-bottom: 10px;
+      font-size: 15px;
+    }
+    #status.ok { color: var(--verde); font-weight: 600; }
+    #status.erro { color: var(--vermelho); font-weight: 600; }
+
+    #scanner-container {
+      border-radius: 14px;
+      overflow: hidden;
+      background: #000;
+      margin-bottom: 12px;
+      display: none;
+    }
+    #scanner-container.ativo { display: block; }
+    #qr-reader { width: 100%; }
+
+    .entrada-manual {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .entrada-manual input {
+      flex: 1;
+      min-width: 0;
+      font: inherit;
+      padding: 12px;
+      border: 2px solid var(--linha);
+      border-radius: 10px;
+      background: #fff;
+      text-transform: uppercase;
+    }
+    .entrada-manual button { padding: 12px 16px; }
+
+    /* ---------- Carrinho (formato de cupom) ---------- */
+    #carrinho {
+      background: var(--papel);
+      border-radius: 14px;
+      padding: 18px;
+      margin-top: 20px;
+      box-shadow: 0 1px 0 var(--linha);
+    }
+    .carrinho-topo {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding-bottom: 12px;
+      border-bottom: 2px dashed var(--linha);
+    }
+    .carrinho-topo h2 { font-size: 19px; }
+    #contador { color: var(--tinta-suave); font-size: 14px; }
+
+    .vazio {
+      text-align: center;
+      color: var(--tinta-suave);
+      padding: 28px 8px;
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px 10px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--linha);
+    }
+    .item:last-child { border-bottom: none; }
+    .item-nome { font-weight: 600; }
+    .item-unit { color: var(--tinta-suave); font-size: 13px; }
+    .item-subtotal {
+      text-align: right;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .item-controles {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .item-controles button {
+      width: 44px;
+      min-height: 44px;
+      padding: 0;
+      font-size: 20px;
+      background: var(--fundo);
+      color: var(--tinta);
+    }
+    .item-controles .qtd {
+      min-width: 28px;
+      text-align: center;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .item-controles .remover {
+      margin-left: auto;
+      width: auto;
+      padding: 0 14px;
+      font-size: 14px;
+      background: transparent;
+      color: var(--vermelho);
+    }
+    .item-controles .remover:hover { background: #fbeceb; }
+
+    /* ---------- Barra de total fixa (etiqueta de preço) ---------- */
+    #barra-total {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--tinta);
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    }
+    .barra-conteudo {
+      max-width: 520px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .etiqueta {
+      flex: 1;
+      background: var(--amarelo);
+      color: var(--tinta);
+      border-radius: 8px;
+      padding: 8px 14px;
+    }
+    .etiqueta small { display: block; font-size: 12px; }
+    #total {
+      font-size: 26px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+    #btn-finalizar { background: var(--verde); color: #fff; }
+    #btn-finalizar:disabled { background: #3b4a46; color: #8a9a96; cursor: not-allowed; }
+
+    .acoes-carrinho { margin-top: 14px; text-align: right; }
+    .acoes-carrinho button { padding: 8px 12px; min-height: 40px; font-size: 14px; }
+
+    /* ---------- Resumo da compra ---------- */
+    dialog {
+      border: none;
+      border-radius: 14px;
+      padding: 22px;
+      width: min(92vw, 440px);
+      margin: auto;
+    }
+    dialog::backdrop { background: rgba(16, 35, 31, 0.6); }
+    dialog h2 { margin-bottom: 4px; }
+    dialog .linha-resumo {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 0;
+      font-variant-numeric: tabular-nums;
+    }
+    dialog .total-resumo {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 2px dashed var(--linha);
+      font-size: 20px;
+      font-weight: 800;
+    }
+    dialog .botoes { display: flex; gap: 8px; margin-top: 18px; }
+    dialog .botoes button { flex: 1; }
+
+    /* ---------- Códigos de teste ---------- */
+    details {
+      margin-top: 20px;
+      color: var(--tinta-suave);
+      font-size: 14px;
+    }
+    details summary { cursor: pointer; padding: 8px 0; }
+    details table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    details td { padding: 6px 4px; border-bottom: 1px solid var(--linha); }
+    details td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    details code { font-weight: 700; color: var(--tinta); }
+  </style>
+</head>
+<body>
+  <header>
+    <span aria-hidden="true">🛒</span>
+    <h1>SmartCart</h1>
+  </header>
+
+  <div id="status" role="status" aria-live="polite">Toque em "Iniciar leitura" para escanear os produtos.</div>
+
+  <div id="scanner-container">
+    <div id="qr-reader"></div>
+  </div>
+
+  <button id="btn-scanner" class="btn-principal" type="button">Iniciar leitura</button>
+
+  <form class="entrada-manual" id="form-manual">
+    <input id="codigo-manual" type="text" placeholder="Digitar código (ex.: LEITE001)" autocomplete="off" aria-label="Código do produto">
+    <button class="btn-secundario" type="submit">Adicionar</button>
+  </form>
+
+  <section id="carrinho" aria-labelledby="titulo-carrinho">
+    <div class="carrinho-topo">
+      <h2 id="titulo-carrinho">Seu carrinho</h2>
+      <span id="contador">0 itens</span>
+    </div>
+    <div id="itens"></div>
+    <div class="acoes-carrinho">
+      <button id="btn-limpar" class="btn-secundario" type="button">Limpar carrinho</button>
+    </div>
+  </section>
+
+  <details>
+    <summary>Códigos dos produtos (para gerar QR codes de teste)</summary>
+    <table id="tabela-produtos"></table>
+  </details>
+
+  <div id="barra-total">
+    <div class="barra-conteudo">
+      <div class="etiqueta">
+        <small>Total da compra</small>
+        <div id="total">R$ 0,00</div>
+      </div>
+      <button id="btn-finalizar" type="button" disabled>Finalizar</button>
+    </div>
+  </div>
+
+  <dialog id="resumo">
+    <h2>Resumo da compra</h2>
+    <div id="resumo-itens"></div>
+    <div class="total-resumo"><span>Total</span><span id="resumo-total"></span></div>
+    <div class="botoes">
+      <button id="btn-voltar" class="btn-secundario" type="button">Voltar</button>
+      <button id="btn-nova" class="btn-principal" type="button">Nova compra</button>
+    </div>
+  </dialog>
+
+  <script>
+    // ============================================
+    // BANCO DE PRODUTOS
+    // O texto do QR code deve ser exatamente o código (ex.: LEITE001)
+    // ============================================
+    const bancoProdutos = {
+      "LEITE001": { nome: "Leite 1L",        preco: 4.99 },
+      "PAO01":    { nome: "Pão Francês",     preco: 2.49 },
+      "OVOS001":  { nome: "Dúzia de Ovos",   preco: 6.99 },
+      "MACA01":   { nome: "Maçã",            preco: 0.89 },
+      "ARROZ001": { nome: "Arroz 5kg",       preco: 24.99 }
+      // Adicione mais produtos aqui
+    };
+
+    const CHAVE_STORAGE = "smartcart.carrinho";
+    const ESPERA_MESMO_CODIGO_MS = 2000; // evita ler o mesmo QR várias vezes seguidas
+
+    // ============================================
+    // UTILITÁRIOS
+    // ============================================
+    const moeda = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const $ = (id) => document.getElementById(id);
+
+    // ============================================
+    // LÓGICA DO CARRINHO
+    // O carrinho guarda só { id, quantidade }; nome e preço vêm sempre do banco.
+    // ============================================
+    let carrinho = [];
+
+    function salvarCarrinho() {
+      try {
+        localStorage.setItem(CHAVE_STORAGE, JSON.stringify(carrinho));
+      } catch (e) {
+        console.warn("Não foi possível salvar o carrinho:", e);
+      }
+    }
+
+    function carregarCarrinho() {
+      try {
+        const salvo = JSON.parse(localStorage.getItem(CHAVE_STORAGE));
+        if (Array.isArray(salvo)) {
+          carrinho = salvo.filter(i =>
+            i && bancoProdutos[i.id] && Number.isInteger(i.quantidade) && i.quantidade > 0
+          );
+        }
+      } catch (e) {
+        carrinho = [];
+      }
+    }
+
+    function adicionar(id) {
+      const produto = bancoProdutos[id];
+      if (!produto) return false;
+      const existente = carrinho.find(i => i.id === id);
+      if (existente) existente.quantidade += 1;
+      else carrinho.push({ id, quantidade: 1 });
+      atualizarTela();
+      return true;
+    }
+
+    function alterarQuantidade(id, delta) {
+      const item = carrinho.find(i => i.id === id);
+      if (!item) return;
+      item.quantidade += delta;
+      if (item.quantidade <= 0) carrinho = carrinho.filter(i => i.id !== id);
+      atualizarTela();
+    }
+
+    function remover(id) {
+      carrinho = carrinho.filter(i => i.id !== id);
+      atualizarTela();
+    }
+
+    function limparCarrinho() {
+      carrinho = [];
+      atualizarTela();
+    }
+
+    function calcularTotal() {
+      return carrinho.reduce((t, i) => t + bancoProdutos[i.id].preco * i.quantidade, 0);
+    }
+
+    function contarItens() {
+      return carrinho.reduce((t, i) => t + i.quantidade, 0);
+    }
+
+    function atualizarTela() {
+      const itensDiv = $("itens");
+
+      if (carrinho.length === 0) {
+        itensDiv.innerHTML = '<p class="vazio">Carrinho vazio.<br>Escaneie um produto para começar.</p>';
+      } else {
+        itensDiv.innerHTML = carrinho.map(i => {
+          const p = bancoProdutos[i.id];
+          return `
+            <div class="item" data-id="${i.id}">
+              <div>
+                <div class="item-nome">${p.nome}</div>
+                <div class="item-unit">${moeda(p.preco)} cada</div>
+              </div>
+              <div class="item-subtotal">${moeda(p.preco * i.quantidade)}</div>
+              <div class="item-controles">
+                <button type="button" data-acao="menos" aria-label="Diminuir quantidade de ${p.nome}">−</button>
+                <span class="qtd">${i.quantidade}</span>
+                <button type="button" data-acao="mais" aria-label="Aumentar quantidade de ${p.nome}">+</button>
+                <button type="button" class="remover" data-acao="remover">Remover</button>
+              </div>
+            </div>`;
+        }).join("");
+      }
+
+      const n = contarItens();
+      $("contador").textContent = n + (n === 1 ? " item" : " itens");
+      $("total").textContent = moeda(calcularTotal());
+      $("btn-finalizar").disabled = carrinho.length === 0;
+      $("btn-limpar").style.display = carrinho.length === 0 ? "none" : "";
+      salvarCarrinho();
+    }
+
+    // Eventos dos botões dentro do carrinho (delegação)
+    $("itens").addEventListener("click", (e) => {
+      const botao = e.target.closest("button[data-acao]");
+      if (!botao) return;
+      const id = botao.closest(".item").dataset.id;
+      const acao = botao.dataset.acao;
+      if (acao === "mais") alterarQuantidade(id, 1);
+      else if (acao === "menos") alterarQuantidade(id, -1);
+      else if (acao === "remover") remover(id);
+    });
+
+    $("btn-limpar").addEventListener("click", () => {
+      if (confirm("Remover todos os itens do carrinho?")) limparCarrinho();
+    });
+
+    // ============================================
+    // FEEDBACK (status, bipe e vibração)
+    // ============================================
+    let timerStatus;
+    function mostrarStatus(texto, tipo) {
+      const el = $("status");
+      el.textContent = texto;
+      el.className = tipo || "";
+      clearTimeout(timerStatus);
+      if (tipo && scannerAtivo) {
+        timerStatus = setTimeout(() => {
+          el.textContent = "Câmera ativa — aponte para o QR code";
+          el.className = "";
+        }, 2000);
+      }
+    }
+
+    let audioCtx;
+    function bipe(frequencia) {
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const ganho = audioCtx.createGain();
+        osc.frequency.value = frequencia;
+        ganho.gain.value = 0.08;
+        osc.connect(ganho);
+        ganho.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.12);
+      } catch (e) { /* sem áudio, segue sem bipe */ }
+    }
+
+    function feedbackSucesso() {
+      bipe(880);
+      if (navigator.vibrate) navigator.vibrate(100);
+    }
+    function feedbackErro() {
+      bipe(220);
+      if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+    }
+
+    // ============================================
+    // LEITOR DE QR CODE (câmera fica ligada o tempo todo)
+    // ============================================
+    let leitorQr = null;
+    let scannerAtivo = false;
+    let ultimoCodigo = "";
+    let ultimoMomento = 0;
+
+    function processarCodigo(textoLido) {
+      const codigo = textoLido.trim().toUpperCase();
+      const agora = Date.now();
+
+      // ignora o mesmo código lido de novo em poucos segundos
+      if (codigo === ultimoCodigo && agora - ultimoMomento < ESPERA_MESMO_CODIGO_MS) return;
+      ultimoCodigo = codigo;
+      ultimoMomento = agora;
+
+      if (adicionar(codigo)) {
+        feedbackSucesso();
+        mostrarStatus("✔ " + bancoProdutos[codigo].nome + " adicionado", "ok");
+      } else {
+        feedbackErro();
+        mostrarStatus("Produto não cadastrado: " + codigo, "erro");
+      }
+    }
+
+    async function iniciarScanner() {
+      if (scannerAtivo) return;
+      leitorQr = new Html5Qrcode("qr-reader");
+      $("scanner-container").classList.add("ativo");
+
+      const config = {
+        fps: 10,
+        qrbox: (largura, altura) => {
+          const lado = Math.floor(Math.min(largura, altura) * 0.7);
+          return { width: lado, height: lado };
+        },
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
+      };
+
+      try {
+        await leitorQr.start(
+          { facingMode: "environment" }, // câmera traseira
+          config,
+          processarCodigo,
+          () => {} // erros de leitura contínuos: ignorar
+        );
+        scannerAtivo = true;
+        const b = $("btn-scanner");
+        b.textContent = "Parar leitura";
+        b.classList.add("btn-parar");
+        mostrarStatus("Câmera ativa — aponte para o QR code");
+      } catch (err) {
+        console.error("Erro ao iniciar a câmera:", err);
+        $("scanner-container").classList.remove("ativo");
+        const semHttps = !window.isSecureContext;
+        mostrarStatus(
+          semHttps
+            ? "A câmera só funciona em página segura (HTTPS). Publique o site em HTTPS."
+            : "Não foi possível abrir a câmera. Permita o acesso à câmera no navegador.",
+          "erro"
+        );
+      }
+    }
+
+    async function pararScanner() {
+      if (!scannerAtivo || !leitorQr) return;
+      try {
+        await leitorQr.stop();
+        leitorQr.clear();
+      } catch (err) {
+        console.error("Erro ao parar a câmera:", err);
+      }
+      scannerAtivo = false;
+      $("scanner-container").classList.remove("ativo");
+      const b = $("btn-scanner");
+      b.textContent = "Iniciar leitura";
+      b.classList.remove("btn-parar");
+      mostrarStatus("Leitura parada.");
+    }
+
+    $("btn-scanner").addEventListener("click", () => {
+      if (scannerAtivo) pararScanner();
+      else iniciarScanner();
+    });
+
+    // ============================================
+    // ENTRADA MANUAL (útil se a câmera falhar na apresentação)
+    // ============================================
+    $("form-manual").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const campo = $("codigo-manual");
+      if (!campo.value.trim()) return;
+      const codigo = campo.value.trim().toUpperCase();
+      if (adicionar(codigo)) {
+        feedbackSucesso();
+        mostrarStatus("✔ " + bancoProdutos[codigo].nome + " adicionado", "ok");
+        campo.value = "";
+      } else {
+        feedbackErro();
+        mostrarStatus("Produto não cadastrado: " + codigo, "erro");
+      }
+    });
+
+    // ============================================
+    // FINALIZAR COMPRA
+    // ============================================
+    const dialogo = $("resumo");
+
+    $("btn-finalizar").addEventListener("click", () => {
+      $("resumo-itens").innerHTML = carrinho.map(i => {
+        const p = bancoProdutos[i.id];
+        return `<div class="linha-resumo">
+                  <span>${i.quantidade}× ${p.nome}</span>
+                  <span>${moeda(p.preco * i.quantidade)}</span>
+                </div>`;
+      }).join("");
+      $("resumo-total").textContent = moeda(calcularTotal());
+      dialogo.showModal();
+    });
+
+    $("btn-voltar").addEventListener("click", () => dialogo.close());
+
+    $("btn-nova").addEventListener("click", () => {
+      limparCarrinho();
+      dialogo.close();
+      mostrarStatus("Nova compra iniciada.");
+    });
+
+    // ============================================
+    // INICIALIZAÇÃO
+    // ============================================
+    // Tabela de códigos de teste
+    $("tabela-produtos").innerHTML = Object.entries(bancoProdutos).map(([id, p]) =>
+      `<tr><td><code>${id}</code></td><td>${p.nome}</td><td>${moeda(p.preco)}</td></tr>`
+    ).join("");
+
+    carregarCarrinho();
+    atualizarTela();
+  </script>
+</body>
+</html>
