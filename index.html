@@ -8,7 +8,6 @@
   <title>SmartCart</title>
 
   <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <script src="js/db.js"></script>
 
   <style>
     :root {
@@ -331,7 +330,7 @@
   </header>
 
   <div id="status" role="status" aria-live="polite">
-    Carregando banco de produtos…
+    Toque em "Iniciar leitura" para escanear os produtos.
   </div>
 
   <div id="scanner-container">
@@ -365,10 +364,10 @@
   </section>
 
   <details>
-    <summary>Códigos de barras de teste (banco de produtos)</summary>
+    <summary>Códigos de barras de teste</summary>
     <p class="dica-codigos">
-      Gere um código de barras EAN-13 com o número abaixo (ex.: <code>7891000100011</code>)
-      ou digite o código no campo. Os dados vêm de <code>data/produtos.json</code>.
+      Gere um EAN-13 com o número abaixo (ex.: <code>7891000100011</code>)
+      ou digite o código no campo.
     </p>
     <table id="tabela-produtos"></table>
   </details>
@@ -397,20 +396,38 @@
   </dialog>
 
   <script>
-    const CHAVE_STORAGE = "smartcart.carrinho.v2";
+    // Produtos embutidos (sem carregar arquivo externo)
+    const bancoProdutos = {
+      "7891000100011": { nome: "Leite Integral 1L", preco: 4.99 },
+      "7891000100028": { nome: "Leite Desnatado 1L", preco: 5.29 },
+      "7891000100035": { nome: "Queijo Mussarela 200g", preco: 14.5 },
+      "7891000100042": { nome: "Iogurte Natural 170g", preco: 3.29 },
+      "7891000200018": { nome: "Pão Francês", preco: 0.89 },
+      "7891000200025": { nome: "Pão de Forma 500g", preco: 7.49 },
+      "7891000300015": { nome: "Dúzia de Ovos", preco: 12.9 },
+      "7891000400012": { nome: "Maçã Fuji (un)", preco: 1.49 },
+      "7891000400029": { nome: "Banana Nanica (un)", preco: 0.79 },
+      "7891000500019": { nome: "Arroz Tipo 1 5kg", preco: 24.99 },
+      "7891000500026": { nome: "Feijão Carioca 1kg", preco: 8.49 },
+      "7891000600016": { nome: "Café Torrado 500g", preco: 18.9 },
+      "7891000600023": { nome: "Açúcar Cristal 1kg", preco: 4.29 },
+      "7891000700013": { nome: "Óleo de Soja 900ml", preco: 6.99 },
+      "7891000800010": { nome: "Sabão em Pó 1kg", preco: 15.9 },
+      "7891000900017": { nome: "Água Mineral 1,5L", preco: 2.49 },
+      "7891000900024": { nome: "Refrigerante 2L", preco: 9.99 },
+      "7891001000013": { nome: "Biscoito Recheado", preco: 3.99 }
+    };
+
+    const CHAVE_STORAGE = "smartcart.carrinho";
     const ESPERA_MESMO_CODIGO_MS = 2000;
-    const MSG_CAMERA =
-      "Câmera ativa — aponte para o código de barras";
+    const MSG_CAMERA = "Câmera ativa — aponte para o código de barras";
 
     const moeda = (v) =>
       v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const $ = (id) => document.getElementById(id);
+    const normalizarCodigo = (c) => String(c || "").trim().replace(/\s+/g, "");
 
     let carrinho = [];
-
-    function produtoDoItem(item) {
-      return SmartCartDB.buscarPorId(item.id);
-    }
 
     function salvarCarrinho() {
       try {
@@ -427,7 +444,7 @@
           carrinho = salvo.filter(
             (i) =>
               i &&
-              SmartCartDB.buscarPorId(i.id) &&
+              bancoProdutos[i.id] &&
               Number.isInteger(i.quantidade) &&
               i.quantidade > 0
           );
@@ -437,15 +454,14 @@
       }
     }
 
-    /** Adiciona pelo código de barras (ou id). Retorna o produto ou null. */
-    function adicionarPorCodigo(codigoLido) {
-      const produto = SmartCartDB.buscarPorCodigo(codigoLido);
-      if (!produto) return null;
-      const existente = carrinho.find((i) => i.id === produto.id);
+    function adicionar(id) {
+      const produto = bancoProdutos[id];
+      if (!produto) return false;
+      const existente = carrinho.find((i) => i.id === id);
       if (existente) existente.quantidade += 1;
-      else carrinho.push({ id: produto.id, quantidade: 1 });
+      else carrinho.push({ id, quantidade: 1 });
       atualizarTela();
-      return produto;
+      return true;
     }
 
     function alterarQuantidade(id, delta) {
@@ -467,10 +483,10 @@
     }
 
     function calcularTotal() {
-      return carrinho.reduce((t, i) => {
-        const p = produtoDoItem(i);
-        return p ? t + p.preco * i.quantidade : t;
-      }, 0);
+      return carrinho.reduce(
+        (t, i) => t + bancoProdutos[i.id].preco * i.quantidade,
+        0
+      );
     }
 
     function contarItens() {
@@ -486,13 +502,12 @@
       } else {
         itensDiv.innerHTML = carrinho
           .map((i) => {
-            const p = produtoDoItem(i);
-            if (!p) return "";
+            const p = bancoProdutos[i.id];
             return `
             <div class="item" data-id="${i.id}">
               <div>
                 <div class="item-nome">${p.nome}</div>
-                <div class="item-unit">${moeda(p.preco)} cada · ${p.codigoBarras}</div>
+                <div class="item-unit">${moeda(p.preco)} cada</div>
               </div>
               <div class="item-subtotal">${moeda(p.preco * i.quantidade)}</div>
               <div class="item-controles">
@@ -512,19 +527,6 @@
       $("btn-finalizar").disabled = carrinho.length === 0;
       $("btn-limpar").style.display = carrinho.length === 0 ? "none" : "";
       salvarCarrinho();
-    }
-
-    function montarTabelaProdutos() {
-      $("tabela-produtos").innerHTML = SmartCartDB.listar()
-        .map(
-          (p) =>
-            `<tr>
-              <td><code>${p.codigoBarras}</code></td>
-              <td>${p.nome}</td>
-              <td>${moeda(p.preco)}</td>
-            </tr>`
-        )
-        .join("");
     }
 
     $("itens").addEventListener("click", (e) => {
@@ -593,14 +595,13 @@
       if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
     }
 
-    // Leitor de código de barras (EAN/UPC/Code128 + QR)
     let leitorQr = null;
     let scannerAtivo = false;
     let ultimoCodigo = "";
     let ultimoMomento = 0;
 
     function processarCodigo(textoLido) {
-      const codigo = SmartCartDB.normalizarCodigo(textoLido);
+      const codigo = normalizarCodigo(textoLido);
       const agora = Date.now();
 
       if (
@@ -612,10 +613,9 @@
       ultimoCodigo = codigo;
       ultimoMomento = agora;
 
-      const produto = adicionarPorCodigo(codigo);
-      if (produto) {
+      if (adicionar(codigo)) {
         feedbackSucesso();
-        mostrarStatus("✔ " + produto.nome + " adicionado", "ok");
+        mostrarStatus("✔ " + bancoProdutos[codigo].nome + " adicionado", "ok");
       } else {
         feedbackErro();
         mostrarStatus("Produto não cadastrado: " + codigo, "erro");
@@ -638,17 +638,11 @@
 
     async function iniciarScanner() {
       if (scannerAtivo) return;
-      if (!SmartCartDB.estaPronto()) {
-        mostrarStatus("Aguarde o banco de produtos carregar.", "erro");
-        return;
-      }
-
       leitorQr = new Html5Qrcode("qr-reader");
       $("scanner-container").classList.add("ativo");
 
       const config = {
         fps: 10,
-        // Caixa larga: melhor para códigos de barras horizontais
         qrbox: (largura, altura) => {
           const w = Math.floor(Math.min(largura * 0.92, 360));
           const h = Math.floor(Math.min(altura * 0.28, 140));
@@ -710,17 +704,14 @@
       e.preventDefault();
       const campo = $("codigo-manual");
       if (!campo.value.trim()) return;
-      const produto = adicionarPorCodigo(campo.value);
-      if (produto) {
+      const codigo = normalizarCodigo(campo.value);
+      if (adicionar(codigo)) {
         feedbackSucesso();
-        mostrarStatus("✔ " + produto.nome + " adicionado", "ok");
+        mostrarStatus("✔ " + bancoProdutos[codigo].nome + " adicionado", "ok");
         campo.value = "";
       } else {
         feedbackErro();
-        mostrarStatus(
-          "Produto não cadastrado: " + SmartCartDB.normalizarCodigo(campo.value),
-          "erro"
-        );
+        mostrarStatus("Produto não cadastrado: " + codigo, "erro");
       }
       campo.focus();
     });
@@ -730,8 +721,7 @@
     $("btn-finalizar").addEventListener("click", () => {
       $("resumo-itens").innerHTML = carrinho
         .map((i) => {
-          const p = produtoDoItem(i);
-          if (!p) return "";
+          const p = bancoProdutos[i.id];
           return `<div class="linha-resumo">
                   <span>${i.quantidade}× ${p.nome}</span>
                   <span>${moeda(p.preco * i.quantidade)}</span>
@@ -750,20 +740,15 @@
       mostrarStatus("Nova compra iniciada.");
     });
 
-    async function iniciarApp() {
-      await SmartCartDB.carregar();
-      const info = SmartCartDB.info();
-      montarTabelaProdutos();
-      carregarCarrinho();
-      atualizarTela();
-      mostrarStatus(
-        info.origem === "json"
-          ? `Banco pronto (${info.total} produtos). Toque em "Iniciar leitura".`
-          : `Banco local pronto (${info.total} produtos). Toque em "Iniciar leitura".`
-      );
-    }
+    $("tabela-produtos").innerHTML = Object.entries(bancoProdutos)
+      .map(
+        ([codigo, p]) =>
+          `<tr><td><code>${codigo}</code></td><td>${p.nome}</td><td>${moeda(p.preco)}</td></tr>`
+      )
+      .join("");
 
-    iniciarApp();
+    carregarCarrinho();
+    atualizarTela();
   </script>
 </body>
 </html>
