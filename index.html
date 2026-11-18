@@ -2,15 +2,18 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10231f">
+  <meta name="description" content="SmartCart — escaneie produtos e some o total da compra em tempo real.">
   <title>SmartCart</title>
 
-  <!-- Biblioteca de leitura de QR Code -->
   <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="js/db.js"></script>
 
   <style>
     :root {
-      --fundo: #eef2f1;
+      --fundo: #e8efec;
+      --fundo-grad: linear-gradient(165deg, #eef5f2 0%, #e0ebe6 45%, #d5e4de 100%);
       --tinta: #10231f;
       --tinta-suave: #5b6b67;
       --verde: #0b6e4f;
@@ -19,27 +22,50 @@
       --vermelho: #c0392b;
       --papel: #ffffff;
       --linha: #d7dfdd;
+      --flash: rgba(11, 110, 79, 0.18);
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
       background: var(--fundo);
+      background-image: var(--fundo-grad);
+      background-attachment: fixed;
       color: var(--tinta);
       max-width: 520px;
       margin: 0 auto;
       padding: 16px 16px 120px;
+      min-height: 100dvh;
     }
 
     header {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       margin-bottom: 14px;
     }
-    header h1 { font-size: 26px; letter-spacing: -0.02em; }
-    header span { font-size: 28px; }
+    .logo-marca {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--verde);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .logo-marca svg { width: 22px; height: 22px; }
+    header h1 {
+      font-size: 26px;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+    }
+    header p {
+      color: var(--tinta-suave);
+      font-size: 13px;
+      margin-top: 2px;
+    }
 
     button {
       font: inherit;
@@ -49,20 +75,26 @@
       padding: 14px 18px;
       font-weight: 600;
       min-height: 48px;
+      transition: background 0.15s ease, transform 0.1s ease;
     }
-    button:focus-visible, input:focus-visible {
+    button:active { transform: scale(0.98); }
+    button:focus-visible,
+    input:focus-visible {
       outline: 3px solid var(--amarelo);
       outline-offset: 2px;
     }
 
     .btn-principal { background: var(--verde); color: #fff; width: 100%; }
     .btn-principal:hover { background: var(--verde-escuro); }
-    .btn-parar { background: var(--tinta); }
+    .btn-parar { background: var(--tinta); color: #fff; }
     .btn-parar:hover { background: #000; }
-    .btn-secundario { background: transparent; color: var(--tinta); border: 2px solid var(--linha); }
+    .btn-secundario {
+      background: transparent;
+      color: var(--tinta);
+      border: 2px solid var(--linha);
+    }
     .btn-secundario:hover { background: #fff; }
 
-    /* ---------- Scanner ---------- */
     #status {
       min-height: 24px;
       text-align: center;
@@ -79,9 +111,23 @@
       background: #000;
       margin-bottom: 12px;
       display: none;
+      position: relative;
     }
     #scanner-container.ativo { display: block; }
     #qr-reader { width: 100%; }
+
+    #scanner-container.flash::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: var(--flash);
+      pointer-events: none;
+      animation: flash-scan 0.35s ease-out;
+    }
+    @keyframes flash-scan {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
 
     .entrada-manual {
       display: flex;
@@ -100,7 +146,6 @@
     }
     .entrada-manual button { padding: 12px 16px; }
 
-    /* ---------- Carrinho (formato de cupom) ---------- */
     #carrinho {
       background: var(--papel);
       border-radius: 14px;
@@ -130,8 +175,13 @@
       gap: 6px 10px;
       padding: 12px 0;
       border-bottom: 1px solid var(--linha);
+      animation: item-entra 0.25s ease-out;
     }
     .item:last-child { border-bottom: none; }
+    @keyframes item-entra {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: none; }
+    }
     .item-nome { font-weight: 600; }
     .item-unit { color: var(--tinta-suave); font-size: 13px; }
     .item-subtotal {
@@ -169,7 +219,6 @@
     }
     .item-controles .remover:hover { background: #fbeceb; }
 
-    /* ---------- Barra de total fixa (etiqueta de preço) ---------- */
     #barra-total {
       position: fixed;
       left: 0;
@@ -177,6 +226,7 @@
       bottom: 0;
       background: var(--tinta);
       padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+      z-index: 20;
     }
     .barra-conteudo {
       max-width: 520px;
@@ -200,12 +250,19 @@
       letter-spacing: -0.02em;
     }
     #btn-finalizar { background: var(--verde); color: #fff; }
-    #btn-finalizar:disabled { background: #3b4a46; color: #8a9a96; cursor: not-allowed; }
+    #btn-finalizar:disabled {
+      background: #3b4a46;
+      color: #8a9a96;
+      cursor: not-allowed;
+    }
 
     .acoes-carrinho { margin-top: 14px; text-align: right; }
-    .acoes-carrinho button { padding: 8px 12px; min-height: 40px; font-size: 14px; }
+    .acoes-carrinho button {
+      padding: 8px 12px;
+      min-height: 40px;
+      font-size: 14px;
+    }
 
-    /* ---------- Resumo da compra ---------- */
     dialog {
       border: none;
       border-radius: 14px;
@@ -234,7 +291,6 @@
     dialog .botoes { display: flex; gap: 8px; margin-top: 18px; }
     dialog .botoes button { flex: 1; }
 
-    /* ---------- Códigos de teste ---------- */
     details {
       margin-top: 20px;
       color: var(--tinta-suave);
@@ -242,18 +298,41 @@
     }
     details summary { cursor: pointer; padding: 8px 0; }
     details table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-    details td { padding: 6px 4px; border-bottom: 1px solid var(--linha); }
-    details td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    details td {
+      padding: 6px 4px;
+      border-bottom: 1px solid var(--linha);
+    }
+    details td:last-child {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
     details code { font-weight: 700; color: var(--tinta); }
+
+    .dica-codigos {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--tinta-suave);
+    }
   </style>
 </head>
 <body>
   <header>
-    <span aria-hidden="true">🛒</span>
-    <h1>SmartCart</h1>
+    <div class="logo-marca" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="20" r="1.5" fill="currentColor" stroke="none"/>
+        <circle cx="18" cy="20" r="1.5" fill="currentColor" stroke="none"/>
+        <path d="M3 4h2l2.4 11.2a1.5 1.5 0 0 0 1.5 1.2h8.4a1.5 1.5 0 0 0 1.5-1.2L21 8H7"/>
+      </svg>
+    </div>
+    <div>
+      <h1>SmartCart</h1>
+      <p>Escaneie o código de barras e some o total</p>
+    </div>
   </header>
 
-  <div id="status" role="status" aria-live="polite">Toque em "Iniciar leitura" para escanear os produtos.</div>
+  <div id="status" role="status" aria-live="polite">
+    Carregando banco de produtos…
+  </div>
 
   <div id="scanner-container">
     <div id="qr-reader"></div>
@@ -262,7 +341,15 @@
   <button id="btn-scanner" class="btn-principal" type="button">Iniciar leitura</button>
 
   <form class="entrada-manual" id="form-manual">
-    <input id="codigo-manual" type="text" placeholder="Digitar código (ex.: LEITE001)" autocomplete="off" aria-label="Código do produto">
+    <input
+      id="codigo-manual"
+      type="text"
+      inputmode="numeric"
+      placeholder="Código de barras (ex.: 7891000100011)"
+      autocomplete="off"
+      enterkeyhint="done"
+      aria-label="Código de barras do produto"
+    >
     <button class="btn-secundario" type="submit">Adicionar</button>
   </form>
 
@@ -278,7 +365,11 @@
   </section>
 
   <details>
-    <summary>Códigos dos produtos (para gerar QR codes de teste)</summary>
+    <summary>Códigos de barras de teste (banco de produtos)</summary>
+    <p class="dica-codigos">
+      Gere um código de barras EAN-13 com o número abaixo (ex.: <code>7891000100011</code>)
+      ou digite o código no campo. Os dados vêm de <code>data/produtos.json</code>.
+    </p>
     <table id="tabela-produtos"></table>
   </details>
 
@@ -295,7 +386,10 @@
   <dialog id="resumo">
     <h2>Resumo da compra</h2>
     <div id="resumo-itens"></div>
-    <div class="total-resumo"><span>Total</span><span id="resumo-total"></span></div>
+    <div class="total-resumo">
+      <span>Total</span>
+      <span id="resumo-total"></span>
+    </div>
     <div class="botoes">
       <button id="btn-voltar" class="btn-secundario" type="button">Voltar</button>
       <button id="btn-nova" class="btn-principal" type="button">Nova compra</button>
@@ -303,33 +397,20 @@
   </dialog>
 
   <script>
-    // ============================================
-    // BANCO DE PRODUTOS
-    // O texto do QR code deve ser exatamente o código (ex.: LEITE001)
-    // ============================================
-    const bancoProdutos = {
-      "LEITE001": { nome: "Leite 1L",        preco: 4.99 },
-      "PAO01":    { nome: "Pão Francês",     preco: 2.49 },
-      "OVOS001":  { nome: "Dúzia de Ovos",   preco: 6.99 },
-      "MACA01":   { nome: "Maçã",            preco: 0.89 },
-      "ARROZ001": { nome: "Arroz 5kg",       preco: 24.99 }
-      // Adicione mais produtos aqui
-    };
+    const CHAVE_STORAGE = "smartcart.carrinho.v2";
+    const ESPERA_MESMO_CODIGO_MS = 2000;
+    const MSG_CAMERA =
+      "Câmera ativa — aponte para o código de barras";
 
-    const CHAVE_STORAGE = "smartcart.carrinho";
-    const ESPERA_MESMO_CODIGO_MS = 2000; // evita ler o mesmo QR várias vezes seguidas
-
-    // ============================================
-    // UTILITÁRIOS
-    // ============================================
-    const moeda = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const moeda = (v) =>
+      v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const $ = (id) => document.getElementById(id);
 
-    // ============================================
-    // LÓGICA DO CARRINHO
-    // O carrinho guarda só { id, quantidade }; nome e preço vêm sempre do banco.
-    // ============================================
     let carrinho = [];
+
+    function produtoDoItem(item) {
+      return SmartCartDB.buscarPorId(item.id);
+    }
 
     function salvarCarrinho() {
       try {
@@ -343,8 +424,12 @@
       try {
         const salvo = JSON.parse(localStorage.getItem(CHAVE_STORAGE));
         if (Array.isArray(salvo)) {
-          carrinho = salvo.filter(i =>
-            i && bancoProdutos[i.id] && Number.isInteger(i.quantidade) && i.quantidade > 0
+          carrinho = salvo.filter(
+            (i) =>
+              i &&
+              SmartCartDB.buscarPorId(i.id) &&
+              Number.isInteger(i.quantidade) &&
+              i.quantidade > 0
           );
         }
       } catch (e) {
@@ -352,26 +437,27 @@
       }
     }
 
-    function adicionar(id) {
-      const produto = bancoProdutos[id];
-      if (!produto) return false;
-      const existente = carrinho.find(i => i.id === id);
+    /** Adiciona pelo código de barras (ou id). Retorna o produto ou null. */
+    function adicionarPorCodigo(codigoLido) {
+      const produto = SmartCartDB.buscarPorCodigo(codigoLido);
+      if (!produto) return null;
+      const existente = carrinho.find((i) => i.id === produto.id);
       if (existente) existente.quantidade += 1;
-      else carrinho.push({ id, quantidade: 1 });
+      else carrinho.push({ id: produto.id, quantidade: 1 });
       atualizarTela();
-      return true;
+      return produto;
     }
 
     function alterarQuantidade(id, delta) {
-      const item = carrinho.find(i => i.id === id);
+      const item = carrinho.find((i) => i.id === id);
       if (!item) return;
       item.quantidade += delta;
-      if (item.quantidade <= 0) carrinho = carrinho.filter(i => i.id !== id);
+      if (item.quantidade <= 0) carrinho = carrinho.filter((i) => i.id !== id);
       atualizarTela();
     }
 
     function remover(id) {
-      carrinho = carrinho.filter(i => i.id !== id);
+      carrinho = carrinho.filter((i) => i.id !== id);
       atualizarTela();
     }
 
@@ -381,7 +467,10 @@
     }
 
     function calcularTotal() {
-      return carrinho.reduce((t, i) => t + bancoProdutos[i.id].preco * i.quantidade, 0);
+      return carrinho.reduce((t, i) => {
+        const p = produtoDoItem(i);
+        return p ? t + p.preco * i.quantidade : t;
+      }, 0);
     }
 
     function contarItens() {
@@ -392,15 +481,18 @@
       const itensDiv = $("itens");
 
       if (carrinho.length === 0) {
-        itensDiv.innerHTML = '<p class="vazio">Carrinho vazio.<br>Escaneie um produto para começar.</p>';
+        itensDiv.innerHTML =
+          '<p class="vazio">Carrinho vazio.<br>Escaneie um código de barras para começar.</p>';
       } else {
-        itensDiv.innerHTML = carrinho.map(i => {
-          const p = bancoProdutos[i.id];
-          return `
+        itensDiv.innerHTML = carrinho
+          .map((i) => {
+            const p = produtoDoItem(i);
+            if (!p) return "";
+            return `
             <div class="item" data-id="${i.id}">
               <div>
                 <div class="item-nome">${p.nome}</div>
-                <div class="item-unit">${moeda(p.preco)} cada</div>
+                <div class="item-unit">${moeda(p.preco)} cada · ${p.codigoBarras}</div>
               </div>
               <div class="item-subtotal">${moeda(p.preco * i.quantidade)}</div>
               <div class="item-controles">
@@ -410,7 +502,8 @@
                 <button type="button" class="remover" data-acao="remover">Remover</button>
               </div>
             </div>`;
-        }).join("");
+          })
+          .join("");
       }
 
       const n = contarItens();
@@ -421,7 +514,19 @@
       salvarCarrinho();
     }
 
-    // Eventos dos botões dentro do carrinho (delegação)
+    function montarTabelaProdutos() {
+      $("tabela-produtos").innerHTML = SmartCartDB.listar()
+        .map(
+          (p) =>
+            `<tr>
+              <td><code>${p.codigoBarras}</code></td>
+              <td>${p.nome}</td>
+              <td>${moeda(p.preco)}</td>
+            </tr>`
+        )
+        .join("");
+    }
+
     $("itens").addEventListener("click", (e) => {
       const botao = e.target.closest("button[data-acao]");
       if (!botao) return;
@@ -436,9 +541,6 @@
       if (confirm("Remover todos os itens do carrinho?")) limparCarrinho();
     });
 
-    // ============================================
-    // FEEDBACK (status, bipe e vibração)
-    // ============================================
     let timerStatus;
     function mostrarStatus(texto, tipo) {
       const el = $("status");
@@ -447,7 +549,7 @@
       clearTimeout(timerStatus);
       if (tipo && scannerAtivo) {
         timerStatus = setTimeout(() => {
-          el.textContent = "Câmera ativa — aponte para o QR code";
+          el.textContent = MSG_CAMERA;
           el.className = "";
         }, 2000);
       }
@@ -456,7 +558,9 @@
     let audioCtx;
     function bipe(frequencia) {
       try {
-        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx =
+          audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") audioCtx.resume();
         const osc = audioCtx.createOscillator();
         const ganho = audioCtx.createGain();
         osc.frequency.value = frequencia;
@@ -465,78 +569,117 @@
         ganho.connect(audioCtx.destination);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.12);
-      } catch (e) { /* sem áudio, segue sem bipe */ }
+      } catch (e) {
+        /* sem áudio */
+      }
+    }
+
+    function flashScanner() {
+      const box = $("scanner-container");
+      if (!box.classList.contains("ativo")) return;
+      box.classList.remove("flash");
+      void box.offsetWidth;
+      box.classList.add("flash");
     }
 
     function feedbackSucesso() {
       bipe(880);
       if (navigator.vibrate) navigator.vibrate(100);
+      flashScanner();
     }
+
     function feedbackErro() {
       bipe(220);
       if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
     }
 
-    // ============================================
-    // LEITOR DE QR CODE (câmera fica ligada o tempo todo)
-    // ============================================
+    // Leitor de código de barras (EAN/UPC/Code128 + QR)
     let leitorQr = null;
     let scannerAtivo = false;
     let ultimoCodigo = "";
     let ultimoMomento = 0;
 
     function processarCodigo(textoLido) {
-      const codigo = textoLido.trim().toUpperCase();
+      const codigo = SmartCartDB.normalizarCodigo(textoLido);
       const agora = Date.now();
 
-      // ignora o mesmo código lido de novo em poucos segundos
-      if (codigo === ultimoCodigo && agora - ultimoMomento < ESPERA_MESMO_CODIGO_MS) return;
+      if (
+        codigo === ultimoCodigo &&
+        agora - ultimoMomento < ESPERA_MESMO_CODIGO_MS
+      ) {
+        return;
+      }
       ultimoCodigo = codigo;
       ultimoMomento = agora;
 
-      if (adicionar(codigo)) {
+      const produto = adicionarPorCodigo(codigo);
+      if (produto) {
         feedbackSucesso();
-        mostrarStatus("✔ " + bancoProdutos[codigo].nome + " adicionado", "ok");
+        mostrarStatus("✔ " + produto.nome + " adicionado", "ok");
       } else {
         feedbackErro();
         mostrarStatus("Produto não cadastrado: " + codigo, "erro");
       }
     }
 
+    function formatosCodigoBarras() {
+      const F = Html5QrcodeSupportedFormats;
+      return [
+        F.EAN_13,
+        F.EAN_8,
+        F.UPC_A,
+        F.UPC_E,
+        F.CODE_128,
+        F.CODE_39,
+        F.ITF,
+        F.QR_CODE
+      ];
+    }
+
     async function iniciarScanner() {
       if (scannerAtivo) return;
+      if (!SmartCartDB.estaPronto()) {
+        mostrarStatus("Aguarde o banco de produtos carregar.", "erro");
+        return;
+      }
+
       leitorQr = new Html5Qrcode("qr-reader");
       $("scanner-container").classList.add("ativo");
 
       const config = {
         fps: 10,
+        // Caixa larga: melhor para códigos de barras horizontais
         qrbox: (largura, altura) => {
-          const lado = Math.floor(Math.min(largura, altura) * 0.7);
-          return { width: lado, height: lado };
+          const w = Math.floor(Math.min(largura * 0.92, 360));
+          const h = Math.floor(Math.min(altura * 0.28, 140));
+          return { width: w, height: Math.max(h, 80) };
         },
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
+        formatsToSupport: formatosCodigoBarras(),
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
       };
 
       try {
         await leitorQr.start(
-          { facingMode: "environment" }, // câmera traseira
+          { facingMode: "environment" },
           config,
           processarCodigo,
-          () => {} // erros de leitura contínuos: ignorar
+          () => {}
         );
         scannerAtivo = true;
         const b = $("btn-scanner");
         b.textContent = "Parar leitura";
         b.classList.add("btn-parar");
-        mostrarStatus("Câmera ativa — aponte para o QR code");
+        mostrarStatus(MSG_CAMERA);
       } catch (err) {
         console.error("Erro ao iniciar a câmera:", err);
         $("scanner-container").classList.remove("ativo");
         const semHttps = !window.isSecureContext;
         mostrarStatus(
           semHttps
-            ? "A câmera só funciona em página segura (HTTPS). Publique o site em HTTPS."
-            : "Não foi possível abrir a câmera. Permita o acesso à câmera no navegador.",
+            ? "A câmera só funciona em página segura (HTTPS ou localhost)."
+            : "Não foi possível abrir a câmera. Permita o acesso no navegador.",
           "erro"
         );
       }
@@ -563,37 +706,38 @@
       else iniciarScanner();
     });
 
-    // ============================================
-    // ENTRADA MANUAL (útil se a câmera falhar na apresentação)
-    // ============================================
     $("form-manual").addEventListener("submit", (e) => {
       e.preventDefault();
       const campo = $("codigo-manual");
       if (!campo.value.trim()) return;
-      const codigo = campo.value.trim().toUpperCase();
-      if (adicionar(codigo)) {
+      const produto = adicionarPorCodigo(campo.value);
+      if (produto) {
         feedbackSucesso();
-        mostrarStatus("✔ " + bancoProdutos[codigo].nome + " adicionado", "ok");
+        mostrarStatus("✔ " + produto.nome + " adicionado", "ok");
         campo.value = "";
       } else {
         feedbackErro();
-        mostrarStatus("Produto não cadastrado: " + codigo, "erro");
+        mostrarStatus(
+          "Produto não cadastrado: " + SmartCartDB.normalizarCodigo(campo.value),
+          "erro"
+        );
       }
+      campo.focus();
     });
 
-    // ============================================
-    // FINALIZAR COMPRA
-    // ============================================
     const dialogo = $("resumo");
 
     $("btn-finalizar").addEventListener("click", () => {
-      $("resumo-itens").innerHTML = carrinho.map(i => {
-        const p = bancoProdutos[i.id];
-        return `<div class="linha-resumo">
+      $("resumo-itens").innerHTML = carrinho
+        .map((i) => {
+          const p = produtoDoItem(i);
+          if (!p) return "";
+          return `<div class="linha-resumo">
                   <span>${i.quantidade}× ${p.nome}</span>
                   <span>${moeda(p.preco * i.quantidade)}</span>
                 </div>`;
-      }).join("");
+        })
+        .join("");
       $("resumo-total").textContent = moeda(calcularTotal());
       dialogo.showModal();
     });
@@ -606,16 +750,20 @@
       mostrarStatus("Nova compra iniciada.");
     });
 
-    // ============================================
-    // INICIALIZAÇÃO
-    // ============================================
-    // Tabela de códigos de teste
-    $("tabela-produtos").innerHTML = Object.entries(bancoProdutos).map(([id, p]) =>
-      `<tr><td><code>${id}</code></td><td>${p.nome}</td><td>${moeda(p.preco)}</td></tr>`
-    ).join("");
+    async function iniciarApp() {
+      await SmartCartDB.carregar();
+      const info = SmartCartDB.info();
+      montarTabelaProdutos();
+      carregarCarrinho();
+      atualizarTela();
+      mostrarStatus(
+        info.origem === "json"
+          ? `Banco pronto (${info.total} produtos). Toque em "Iniciar leitura".`
+          : `Banco local pronto (${info.total} produtos). Toque em "Iniciar leitura".`
+      );
+    }
 
-    carregarCarrinho();
-    atualizarTela();
+    iniciarApp();
   </script>
 </body>
 </html>
